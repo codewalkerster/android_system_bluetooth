@@ -737,6 +737,70 @@ proc_enable_hci()
 }
 
 #ifdef ANDROID
+
+void    genRandomNum(unsigned char *ramdom_mac, int ramdom_mac_size) 
+{
+	int fd;
+
+	if((fd = open("/dev/urandom", O_RDONLY)) != -1)   {
+	 	read(fd, ramdom_mac, ramdom_mac_size);
+	 	close(fd);
+    	fprintf(stderr, "read /dev/urandom file\n");
+	}
+	else    {
+       	struct timeval  tv;
+        int i;
+        
+		gettimeofday(&tv, NULL);
+		
+		for(i = 0; i < ramdom_mac_size; i++)
+			ramdom_mac[i] = (((tv.tv_sec * tv.tv_usec) >> i*4 )&0xff); 
+
+    	fprintf(stderr, "read gettimeofday()\n");
+	}
+}
+
+const   char    MACFilename[64] = "/data/misc/bluetoothd/mac_addr";
+
+int     create_btaddr_file  (char *create_path)
+{
+    FILE            *fp;
+    unsigned char   ramdom_mac[6], buf[20];
+
+	if ((fp = fopen(MACFilename, "rb")) != NULL)  {
+	    fclose(fp);
+    	fprintf(stderr, "Already create file %s\n", MACFilename);
+	}
+    else    {
+    	if((fp = fopen(MACFilename, "wb")) == NULL) {
+        	fprintf(stderr, "Can not create file %s\n", MACFilename);
+        	create_path = NULL;
+    	    return  -1;
+    	} 
+    	else 
+    	{
+    	    fprintf(stderr, "create file %s\n", MACFilename);
+
+    	    memset(buf, 0x00, sizeof(buf));
+    	    
+    		genRandomNum(ramdom_mac, sizeof(ramdom_mac));
+    		sprintf(buf, "%02x:%02x:%02x:%02x:%02x:%02x",  
+    		        (ramdom_mac[0]&0xff), (ramdom_mac[1]&0xff), (ramdom_mac[2]&0xff), 
+    		        (ramdom_mac[3]&0xff), (ramdom_mac[4]&0xff), (ramdom_mac[5]&0xff));
+    		fputs(buf, fp);
+    	   	fclose(fp);	
+        	fprintf(stderr, "Create Ramdom number = %02X:%02X:%02X:%02X:%02X:%02X\n",
+    		        (ramdom_mac[0]&0xff), (ramdom_mac[1]&0xff), (ramdom_mac[2]&0xff), 
+    		        (ramdom_mac[3]&0xff), (ramdom_mac[4]&0xff), (ramdom_mac[5]&0xff));
+    	}
+    }
+
+    strncpy(create_path, MACFilename, sizeof(MACFilename));
+	fprintf(stderr, "file path = %s\n", create_path);
+
+    return  0;
+}		
+
 void
 read_default_bdaddr()
 {
@@ -750,8 +814,11 @@ read_default_bdaddr()
 	memset(bdaddr, 0, (len + 1) * sizeof(char));
 
 	property_get("ro.bt.bdaddr_path", path, "");
-	if (path[0] == 0)
-		return;
+
+	if (path[0] == 0)   {
+		fprintf(stderr, "ro.bt.bdaddr_path = null : run create_btadddr_file func\n");
+	    if(create_btaddr_file(&path[0]) < 0)    return;
+	}
 
 	fd = open(path, O_RDONLY);
 	if (fd < 0) {
